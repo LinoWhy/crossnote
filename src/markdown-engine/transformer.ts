@@ -67,6 +67,12 @@ export interface TransformMarkdownOptions {
   timestamp?: number;
 }
 
+function parseWikilinkImageSize(text: string): BlockAttributes {
+  const size = text.match(/^(\d+)(?:x(\d+))?$/);
+  if (!size) return {};
+  return size[2] ? { width: size[1], height: size[2] } : { width: size[1] };
+}
+
 const fileExtensionToLanguageMap = {
   vhd: 'vhdl',
   erl: 'erlang',
@@ -993,6 +999,10 @@ export async function transformMarkdown(
             (absoluteFilePath === filePath || !!imageImportMatch))
         ) {
           if (importMatch || wikilinkImportMatch) {
+            if (wikilinkImportMatch) {
+              const { text } = notebook.processWikilink(wikilinkImportMatch[2]);
+              config = { ...parseWikilinkImageSize(text), ...config };
+            }
             // image
             let imageSrc: string = filesCache[filePath];
 
@@ -1324,7 +1334,31 @@ export async function transformMarkdown(
             if (
               extname.match(/^\.(apng|avif|gif|jpeg|jpg|png|svg|bmp|webp|emf)/)
             ) {
-              return `![${text}](${link})`;
+              let imagePath = link;
+              try {
+                imagePath = decodeURIComponent(imagePath);
+              } catch {
+                // Keep literal percent signs in filenames.
+              }
+              const resolved = notebook.resolveWikilink(
+                imagePath,
+                path.relative(
+                  projectDirectoryPath,
+                  path.join(fileDirectoryPath, '_.md'),
+                ),
+              );
+              const imageSrc = useRelativeFilePath
+                ? escapeUrlPath(
+                    path.relative(
+                      fileDirectoryPath,
+                      path.resolve(projectDirectoryPath, resolved),
+                    ),
+                  )
+                : '/' + escapeUrlPath(resolved);
+              const size = parseWikilinkImageSize(text);
+              const alt = size['width'] ? '' : text.replace(/[\\[\]]/g, '\\$&');
+              const attributes = stringifyBlockAttributes(size);
+              return `![${alt}](<${imageSrc}>)${attributes ? `{${attributes}}` : ''}`;
             }
 
             // Build embed path: use link (with hash stripped for cleaner path)
