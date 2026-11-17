@@ -1758,7 +1758,34 @@ export class Notebook {
       // with that sub-path.  This lets [[summary/report]] resolve to any
       // note whose path ends with "summary/report.md", disambiguating
       // same-named files in different directories.
-      const candidates = Object.keys(this.notes).filter((notePath) => {
+      let paths = Object.keys(this.notes);
+      if (
+        IS_NODE &&
+        /\.(apng|avif|gif|jpe?g|png|svg|bmp|webp|emf)$/i.test(normalizedLink)
+      ) {
+        try {
+          paths = execFileSync(
+            'fd',
+            [
+              '--type',
+              'f',
+              '--fixed-strings',
+              '--print0',
+              '--',
+              path.basename(normalizedLink),
+              '.',
+            ],
+            { cwd: this.notebookPath.fsPath, encoding: 'utf8' },
+          )
+            .split('\0')
+            .filter(Boolean)
+            .map((file) => file.replace(/^\.\//, ''));
+        } catch {
+          // Keep relative resolution when fd is unavailable.
+          paths = [];
+        }
+      }
+      const candidates = paths.filter((notePath) => {
         const normalizedNote = notePath.replace(/\\/g, '/');
         return (
           normalizedNote === normalizedLink ||
